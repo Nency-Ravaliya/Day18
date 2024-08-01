@@ -48,9 +48,19 @@
    - **Description**: Performs the backup of the PostgreSQL database and is referenced in the cron job configured by the playbook.
    - **Instructions**: Refer to the `scripts/backup.sh` file in the repository for the exact content. Ensure this script is deployed to `/usr/local/bin/backup.sh` on `worker01` as part of the Ansible playbook.
 
+# Output:
+- ![image](https://github.com/user-attachments/assets/19737031-39d3-46c2-a873-b3a06b68b72b)
+- ![image](https://github.com/user-attachments/assets/34098a70-307a-4587-8cb0-041dfc60fc18)
+- ![image](https://github.com/user-attachments/assets/612c1659-d5b8-4d42-becc-e8d3a93b8a99)
+
+
+
+
+
 ## Summary
 
 This setup ensures that PostgreSQL is installed and configured on `worker01`, with automatic backups handled by a cron job. Adjust the variables and file paths as necessary for your environment.
 
 For detailed content and additional setup, please refer to the respective files in the repository.
+
 
