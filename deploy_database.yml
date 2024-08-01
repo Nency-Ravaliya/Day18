@@ -1,0 +1,126 @@
+---
+- name: Install and configure PostgreSQL
+  hosts: worker01
+  become: yes
+  vars:
+    db_name: mydatabase
+    db_user: myuser
+    db_password: mypassword
+    backup_dir: /var/backups/postgresql
+    backup_script_path: /usr/local/bin/backup.sh
+    backup_time: "0 2 * * *"
+
+  tasks:
+    - name: Update the apt package index
+      apt:
+        update_cache: yes
+
+    - name: Add PostgreSQL APT repository
+      shell: echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | tee /etc/apt/sources.list.d/pgdg.list
+
+    - name: Download PostgreSQL APT repository key
+      command: curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/ACCC4CF8.asc
+      args:
+        creates: /tmp/ACCC4CF8.asc
+
+    - name: Add PostgreSQL APT repository key
+      apt_key:
+        file: /tmp/ACCC4CF8.asc
+        state: present
+
+    - name: Update the apt package index again
+      apt:
+        update_cache: yes
+
+    - name: Install required packages
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - acl
+        - python3-pip
+        - python3-psycopg2  # Install psycopg2 via apt
+
+    - name: Install PostgreSQL server
+      apt:
+        name: postgresql-13
+        state: present
+
+    - name: Ensure PostgreSQL service is started and enabled
+      service:
+        name: postgresql
+        state: started
+        enabled: yes
+
+    - name: Create PostgreSQL database
+      become_user: postgres
+      postgresql_db:
+        name: "{{ db_name }}"
+        state: present
+
+    - name: Create PostgreSQL user
+      become_user: postgres
+      postgresql_user:
+        name: "{{ db_user }}"
+        password: "{{ db_password }}"
+        db: "{{ db_name }}"
+        priv: "ALL"
+        state: present
+
+    - name: Deploy PostgreSQL configuration file
+      template:
+        src: templates/pg_hba.conf.j2
+        dest: /etc/postgresql/13/main/pg_hba.conf
+      notify:
+        - Restart PostgreSQL
+
+    - name: Ensure backup directory exists
+      file:
+        path: "{{ backup_dir }}"
+        state: directory
+        owner: postgres
+        group: postgres
+        mode: '0755'
+
+    - name: Deploy PostgreSQL backup script
+      copy:
+        dest: "{{ backup_script_path }}"
+        content: |
+          #!/bin/bash
+
+          # Set variables
+          DB_NAME="{{ db_name }}"
+          BACKUP_DIR="{{ backup_dir }}"
+          BACKUP_FILE="${BACKUP_DIR}/${DB_NAME}_backup_$(date +%F_%H-%M-%S).sql"
+
+          # Create the backup directory if it does not exist
+          mkdir -p "$BACKUP_DIR"
+
+          # Perform the backup
+          pg_dump "$DB_NAME" > "$BACKUP_FILE"
+
+          # Optionally, you can compress the backup
+          gzip "$BACKUP_FILE"
+
+          # Remove backups older than 7 days
+          find "$BACKUP_DIR" -type f -name "*.sql.gz" -mtime +7 -exec rm {} \;
+
+          echo "Backup completed: $BACKUP_FILE.gz"
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Create cron job for PostgreSQL backup
+      cron:
+        name: "PostgreSQL backup"
+        user: postgres
+        minute: "{{ backup_time.split()[0] }}"
+        hour: "{{ backup_time.split()[1] }}"
+        job: "{{ backup_script_path }}"
+        
+  handlers:
+    - name: Restart PostgreSQL
+      service:
+        name: postgresql
+        state: restarted
+
